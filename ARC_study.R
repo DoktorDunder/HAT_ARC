@@ -1,0 +1,281 @@
+library(ggplot2)
+library(dplyr)
+library(haven)
+library(tidyr)
+
+setwd("C:/Users/jonas/Downloads/SNAC-K")
+
+
+## DATA DESCRIPTION
+## ___________________________________________________________________________________________
+
+## Conversion to csv.-format
+
+## Matrix containing HAT-scores in 3363 patients from waves 1-5 of SNAC-K
+hat_waves = read_dta("C:/Users/jonas/Downloads/SNAC-K/HAT_waves1to5.dta")
+write.csv(hat_waves, file = "HAT_waves1to5.dta")
+
+## Matrix containing patient register information, admissions, ICD-codes etc.
+npr_full = read_dta("C:/Users/jonas/Downloads/SNAC-K/NPR_1968to2021_inclEKOD.dta")
+write.csv(npr_full, file= "C:/Users/jonas/Downloads/SNAC-K/NPR_1968to2021_inclEKOD.dta")
+
+## Matrix containing sex, age and education in 3363 patients from SNAC-K
+soc_dem = read_dta("C:/Users/jonas/Downloads/SNAC-K/Baseline_sociodemographics.dta")
+write.csv(soc_dem, file = "Baseline_sociodemographics.dta")
+
+## Matrix containing date of death in 1765 patients
+death_reg = read_dta("C:/Users/jonas/Downloads/SNAC-K/Death_register_until_171129.DTA")
+write.csv(death_reg, file = "Death_register_until_171129.DTA")
+
+## Matrix containing participation in physician interviews in SNAC-K
+phys_inter = read_dta("C:/Users/jonas/Downloads/SNAC-K/Physician_interview_dates_waves1to5.dta")
+write.csv(phys_inter, file = "Physician_interview_dates_waves1to5.dta")
+
+## Matrix containing habitation status of SNAC-K participants
+habi_data = read_dta("C:/Users/jonas/Downloads/SNAC-K/institutionalization_waves1to5.dta")
+write.csv(habi_data, file= "institutionalization_waves1to5.dta")
+
+
+## DATA CONFIGURATION
+## _________________________________________________________________________________________
+
+
+## Remove all patients lacking a single HAT score, leaving 3188 patients
+hat_waves_filtered <- hat_waves %>% filter(!(is.na(Sc0) & is.na(Sc1) & is.na(Sc2) & is.na(Sc3) & is.na(Sc4)))
+
+## Remove all patients institutionalized at baseline
+habi_data_1 <-habi_data %>% filter(institution_w1 == 1)
+hat_waves_complete <- hat_waves_filtered %>% filter(!lopnr %in% habi_data_1$lopnr)
+
+## Remove all patients in the NPR data set that do not occur in the adjusted HAT-score dataset
+filtered_npr <- npr_full %>% filter(lopnr %in% hat_waves_complete$lopnr)
+
+## Remove all patient events where the admission time is <1 day
+filtered_npr2 <- filtered_npr %>% filter(INDATUMA != UTDATUMA)
+
+## Remove all out-patient events (guessing that is what UTDATUM == NA is)
+filtered_npr3 <- filtered_npr2 %>% filter(!is.na(UTDATUM))
+
+## Remove all patient events occurring >5 year before baseline
+filtered_npr4 <- filtered_npr3 %>% filter(INDATUMA >= 19960101)
+
+## Remove all patients in the death register not in the complete HAT-data set
+death_reg_1 <- death_reg %>% filter(lopnr %in% hat_waves_complete$lopnr)
+
+## Remove all patients in the social demographics data not in the complete HAT-data set
+soc_dem_1 <- soc_dem %>% filter(lopnr %in% hat_waves_complete$lopnr)
+
+
+
+## Merge all the data sets into one
+TOT <- inner_join(hat_waves_complete, filtered_npr4, by = "lopnr")
+TOT0 <- inner_join(TOT, soc_dem_1, by ="lopnr")
+TOT1 <- left_join(TOT0, death_reg_1, by ="lopnr")
+
+## Filter out all the events not related to MI, LRTI and falls
+## MI confirmed same as Clares
+## Falls confirmed same as Clares
+## LRTI confirmed same as Clares (The ones not used: J099, J154, J155,J168, J170, J173,J201,)
+
+diagnos_MI <- c("I210", "I211", "I212", "I213", "I214",
+               "I214A", "I214B", "I214W", "I214X", "I219", "I21")
+
+diagnos_LRTI <- c( "J100", "J101", "J108", "J110", "J111", 
+                  "J121", "J129", "J139", "J149", "J151", "J152", 
+                   "J157", "J158", "J159",  "J180", 
+                  "J181", "J189",  "J202", "J205","J208", "J209", 
+                  "J219","J229" )
+
+diagnos_fall <- c("W0000", "W0008", "W0009", "W0010",
+                  "W0041", "W0044", "W0048", "W0049", "W0091",
+                  "W0099", "W0100", "W0101", "W0103", "W0104",
+                  "W0108", "W0109", "W0110", "W0111", "W0113",
+                  "W0114", "W0118", "W0119", "W0120", "W0121",
+                  "W0124", "W0128", "W0129", "W0140", "W0141", 
+                  "W0143", "W0144", "W0148", "W0149", "W0153", 
+                  "W0159", "W0169", "W0180", "W0181", "W0184", 
+                  "W0199", "W1089", "W0194", "W0198", "W0199", 
+                  "W0509", "W0510", "W0514", "W0519", "W0559",
+                  "W0604", "W0609", "W0619", "W0629", "W0689", 
+                  "W0690", "W0699", "W0700", "W0709", "W0799",
+                  "W0800", "W0808", "W0814", "W0899", "W1001", 
+                  "W1003", "W1004", "W1008", "W1009", "W1013", 
+                  "W1019", "W1028", "W1088", "W1089", "W1099", 
+                  "W1709", "W1759", "W1799", "W1800", "W1801", 
+                  "W1804", "W1808", "W1809", "W1810", "W1814", 
+                  "W1819", "W1824", "W1844", "W1848", "W1849", 
+                  "W1859", "W1890", "W1893", "W1899", "W1800", 
+                  "W1801", "W1804", "W1808", "W1809", "W1810", 
+                  "W1814", "W1819", "W1824", "W1844", "W1848", 
+                  "W1849", "W1859", "W1890", "W1893", "W1899", 
+                  "W0130", "W0188", "W0189", "W0190", "W0599", 
+                  "W0614", "W1000", "W1900", "W1904", "W1908", 
+                  "W1909", "W1914", "W1919", "W1929", "W1932", 
+                  "W1940", "W1948", "W1949", "W1952", "W1988", 
+                  "W1989", "W1990", "W1999")
+
+diagnos_total <- c(diagnos_fall,diagnos_LRTI,diagnos_MI)
+
+
+TOT2 <- TOT1 %>% filter(hdia %in% diagnos_total | 
+                          DIA %in% diagnos_total | 
+                          EKOD1 %in% diagnos_total | 
+                          EKOD2 %in% diagnos_total | 
+                          EKOD3 %in% diagnos_total | 
+                          EKOD4 %in% diagnos_total | 
+                          EKOD5 %in% diagnos_total | 
+                          EKOD6 %in% diagnos_total | 
+                          EKOD7 %in% diagnos_total)
+
+
+## Number of events with MI : 483
+print(TOT2 %>% filter(hdia %in% diagnos_MI | DIA %in% diagnos_MI) %>% nrow())
+
+## Number of events with LRTI: 809
+print(TOT2 %>% filter(hdia %in% diagnos_LRTI | DIA %in% diagnos_LRTI) %>% nrow())
+
+## Number of events with falls: 2088
+print(TOT2 %>% filter( EKOD1 %in% diagnos_fall | 
+                         EKOD2 %in% diagnos_fall | 
+                         EKOD3 %in% diagnos_fall | 
+                         EKOD4 %in% diagnos_fall | 
+                         EKOD5 %in% diagnos_fall | 
+                         EKOD6 %in% diagnos_fall | 
+                         EKOD7 %in% diagnos_fall) %>% nrow())
+
+## Remove useless and completely empty variables in the data set
+columns <- c( "INSATT", "KTYP", "LT_KLIN", "MVO", "NATION", paste0("OPD", 1:30), "OP_ANT", "PVARD", "SJUKHUS", "UTSATT", "psvard", "reg", "slut", "start", "er_visit", "AR", "KON", "LT_IN", "IN_AKUT_TIDPUNKT", "BED_AKUT_TIDPUNKT", "UT_AKUT_TIDPUNKT", "VERKS_AKUT")
+TOT3 <- TOT2 %>% select(-columns)
+TOT3 <- TOT3%>% select(where(~ !all(is.na(.))))
+
+
+## Remove admissions of the same ICD code that occurs 10 days or less (i.e. re-admission)
+# Add row numbers to identify unique rows
+TOT4 <- TOT3 %>% mutate(row_num = row_number())
+
+# Identify rows to remove
+rows_to_remove <- TOT4 %>%
+  inner_join(TOT4, by = c("lopnr", "hdia")) %>% 
+  filter(INDATUM.x - INDATUM.y > -10 & INDATUM.x - INDATUM.y < 10 & row_num.x != row_num.y) %>%
+  select(row_num.x) %>% 
+  distinct() %>%
+  rename(row_num = row_num.x)
+TOT5 <- TOT4 %>% anti_join(rows_to_remove, by = "row_num")
+
+
+## Ran the numbers again after excluding re-admission
+
+## Number of events with MI : 412
+print(TOT5 %>% filter(hdia %in% diagnos_MI | DIA %in% diagnos_MI) %>% nrow())
+
+## Number of events with LRTI: 698
+print(TOT5 %>% filter(hdia %in% diagnos_LRTI | DIA %in% diagnos_LRTI) %>% nrow())
+
+## Number of events with falls: 1842
+print(TOT5 %>% filter( EKOD1 %in% diagnos_fall | 
+                         EKOD2 %in% diagnos_fall | 
+                         EKOD3 %in% diagnos_fall | 
+                         EKOD4 %in% diagnos_fall | 
+                         EKOD5 %in% diagnos_fall ) %>% nrow())
+
+## Some pre-config data visualisation
+## 1 = MI, 2 = LRTI, 3 = fall
+
+TOT6 <- TOT5 %>% mutate(DIATYP = case_when( hdia %in% diagnos_MI ~ 1, 
+                                            hdia %in% diagnos_LRTI ~ 2,
+                                            EKOD1 %in% diagnos_fall ~ 3,
+                                            EKOD2 %in% diagnos_fall ~ 3,
+                                            EKOD3 %in% diagnos_fall ~3,
+                                            EKOD4 %in% diagnos_fall ~3,
+                                            EKOD5 %in% diagnos_fall ~3))
+
+counts <- TOT6 %>% group_by(lopnr) %>% summarize( count_MI = sum(hdia %in% diagnos_MI |
+                                                                   EKOD1 %in% diagnos_MI |
+                                                                   EKOD2 %in% diagnos_MI |
+                                                                   EKOD3 %in% diagnos_MI |
+                                                                   EKOD4 %in% diagnos_MI |
+                                                                   EKOD5 %in% diagnos_MI), 
+                                                  count_LRTI = sum(hdia %in% diagnos_LRTI |
+                                                                     EKOD1 %in% diagnos_LRTI |
+                                                                     EKOD2 %in% diagnos_LRTI |
+                                                                     EKOD3 %in% diagnos_LRTI |
+                                                                     EKOD4 %in% diagnos_LRTI |
+                                                                     EKOD5 %in% diagnos_LRTI),
+                                                  count_fall = sum(hdia %in% diagnos_fall |
+                                                                     EKOD1 %in% diagnos_fall |
+                                                                     EKOD2 %in% diagnos_fall |
+                                                                     EKOD3 %in% diagnos_fall |
+                                                                     EKOD4 %in% diagnos_fall |
+                                                                     EKOD5 %in% diagnos_fall) )
+TOT6 <- TOT6 %>% left_join(counts, by = "lopnr")
+
+TOT7 <- TOT6 %>% mutate(count_total = count_fall + count_MI + count_LRTI)
+
+## Making the data set look like Clares
+
+TOT8 <- TOT7 %>%
+  pivot_longer(cols= starts_with("Sc"), names_to ="Sc", values_to = "Value" )
+
+
+
+
+
+
+
+
+
+
+
+## Just some data visualisation
+
+## Useless boxplot
+
+ggplot(TOT6, aes(x = factor(DIATYP))) + 
+  geom_boxplot(aes(y = Sc0), color = "red") + 
+  geom_boxplot(aes(y = Sc1), color = "yellow") +
+  geom_boxplot(aes(y = Sc2), color = "blue") + 
+  geom_boxplot(aes(y = Sc3), color = "green") + 
+  geom_boxplot(aes(y = Sc4), color = "purple") + 
+  facet_wrap(~ factor(DIATYP), scales = "free_y") + 
+  labs(title = "Boxplot of Variables by DIATYP", x = "DIATYP", y = "Value") + 
+  theme_minimal()
+
+## Progression of median HAT by each SNAC-K Wave, divided by type of diagnosis
+medians <- TOT6 %>% group_by(DIATYP) %>% summarize( median_Sc0 = median(Sc0, na.rm = TRUE),
+                                                    median_Sc1 = median(Sc1, na.rm = TRUE),
+                                                    median_Sc2 = median(Sc2, na.rm = TRUE),
+                                                    median_Sc3 = median(Sc3, na.rm = TRUE),
+                                                    median_Sc4 = median(Sc4, na.rm = TRUE)
+                                                    )
+       
+medians_graph <- medians %>% pivot_longer(cols = starts_with("median_Sc"), names_to = "Iteration", values_to = "Value")
+# Convert Iteration to a numeric factor for plotting 
+medians_graph$Iteration <- as.numeric(gsub("median_Sc", "", medians_graph$Iteration))
+ggplot(medians_graph, aes(x = factor(Iteration), y = Value, fill = factor(DIATYP))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("1" = "lightblue", "2" = "lightgreen", "3" = "orange"), 
+                    labels = c("1" = "MI", "2" = "LRTI", "3" = "Fall")) +
+  labs(title = "Progression of median HAT-score by diagnosis", x = "SNAC-K Wave", y = "Median Value", fill = "Diagnosis") +
+  theme_gray()
+
+## Histogram of distribution  of HAT- scores in all SNACK-participants
+percentiles <- quantile(hat_waves$Sc0, probs = seq(0.05, 1, 0.25), na.rm = T)
+percentiles_df <- data.frame( Percentile = names(percentiles), Value = percentiles )
+
+
+ggplot(hat_waves, aes(x = Sc0)) + 
+  geom_histogram(aes(y = ..density..), bins = 30, fill = "skyblue", color = "black", alpha = 0.7) + 
+  geom_vline(data = percentiles_df, aes(xintercept = Value), linetype = "dashed", color = "red") + 
+  labs(title = "Histogram of Sc0 with Percentiles", x = "Sc0", y = "Density") + 
+  theme_minimal()
+
+median(TOT6$Sc4, na.rm = T)
+median(hat_waves$Sc4, na.rm = T)
+
+class(TOT5$hdia)
+class(TOT5$EKOD2)
+print(medians)
+
+
+
+
